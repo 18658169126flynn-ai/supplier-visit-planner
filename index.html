@@ -1010,36 +1010,34 @@ const app = createApp({
       });
     }
 
-    // Driving route with timeout
+    // Driving route using Web Service API (more reliable)
     async function getDrivingRoute(from, to) {
       return new Promise((resolve) => {
-        let resolved = false;
         const timer = setTimeout(() => {
-          if (!resolved) { resolved = true; resolve({ distance: 0, duration: 0 }); }
-        }, 8000);
-        try {
-          const driving = new AMap.Driving({ policy: AMap.DrivingPolicy.LEAST_TIME });
-          driving.search(
-          new AMap.LngLat(from.lng, from.lat),
-          new AMap.LngLat(to.lng, to.lat),
-          (status, result) => {
+          console.warn('Driving timeout:', from, to);
+          const dist = Math.sqrt(Math.pow((from.lng - to.lng) * 85000, 2) + Math.pow((from.lat - to.lat) * 111000, 2));
+          resolve({ distance: dist, duration: dist / 40 * 3.6 });
+        }, 6000);
+        const url = `https://restapi.amap.com/v3/direction/driving?origin=${from.lng},${from.lat}&destination=${to.lng},${to.lat}&key=dbaa58…c80b&strategy=0`;
+        fetch(url)
+          .then(r => r.json())
+          .then(data => {
             clearTimeout(timer);
-            if (resolved) return;
-            if (status === 'complete' && result && result.routes && result.routes.length > 0) {
-              resolved = true;
-              const route = result.routes[0];
-              resolve({ distance: route.distance, duration: route.time });
+            if (data.status === '1' && data.route && data.route.paths && data.route.paths.length > 0) {
+              const path = data.route.paths[0];
+              resolve({ distance: parseInt(path.distance), duration: parseInt(path.duration) });
             } else {
-              resolved = true;
-              const dist = AMap.GeometryUtil.distance([from.lng, from.lat], [to.lng, to.lat]);
+              console.warn('Driving failed:', data.info);
+              const dist = Math.sqrt(Math.pow((from.lng - to.lng) * 85000, 2) + Math.pow((from.lat - to.lat) * 111000, 2));
               resolve({ distance: dist, duration: dist / 40 * 3.6 });
             }
-          }
-        );
-        } catch (e) {
-          clearTimeout(timer);
-          if (!resolved) { resolved = true; resolve({ distance: 0, duration: 0 }); }
-        }
+          })
+          .catch(e => {
+            clearTimeout(timer);
+            console.error('Driving error:', e);
+            const dist = Math.sqrt(Math.pow((from.lng - to.lng) * 85000, 2) + Math.pow((from.lat - to.lat) * 111000, 2));
+            resolve({ distance: dist, duration: dist / 40 * 3.6 });
+          });
       });
     }
 
@@ -1064,10 +1062,13 @@ const app = createApp({
       loadingText.value = '正在解析地址...';
 
       // Geocode all
+      console.log('[PlanRoute] Starting geocode for', suppliers.length, 'suppliers');
       const geoResults = [];
       for (let i = 0; i < suppliers.length; i++) {
         loadingText.value = `解析地址 ${i + 1}/${suppliers.length}...`;
+        console.log('[PlanRoute] Geocoding:', suppliers[i].address);
         const geo = await geocodeAddress(suppliers[i].address);
+        console.log('[PlanRoute] Result:', geo ? 'OK' : 'FAILED', suppliers[i].address);
         geoResults.push(geo);
         if (!geo) {
           showToast(`⚠️ 无法解析: ${suppliers[i].address}`);
@@ -1092,8 +1093,9 @@ const app = createApp({
       }
 
       loadingText.value = '计算路线距离...';
+      console.log('[PlanRoute] Building distance matrix for', valid.length, 'valid suppliers');
 
-      // Build distance matrix using driving API
+      // Build distance matrix using Web Service API
       const n = valid.length;
       const distMatrix = Array(n).fill(null).map(() => Array(n).fill(Infinity));
       const timeMatrix = Array(n).fill(null).map(() => Array(n).fill(Infinity));
@@ -1101,7 +1103,9 @@ const app = createApp({
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
           loadingText.value = `计算路线 ${i + 1}-${j + 1}/${n}...`;
+          console.log('[PlanRoute] Driving route:', valid[i].name, '->', valid[j].name);
           const route = await getDrivingRoute(valid[i].location, valid[j].location);
+          console.log('[PlanRoute] Route result:', Math.round(route.distance) + 'm', Math.round(route.duration/60) + 'min');
           distMatrix[i][j] = route.distance;
           distMatrix[j][i] = route.distance;
           timeMatrix[i][j] = route.duration;
