@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="供应商拜访">
+<meta name="theme-color" content="#007AFF">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%23007AFF' width='100' height='100' rx='20'/><text x='50' y='65' text-anchor='middle' fill='white' font-size='50'>🏭</text></svg>">
+<title>供应商拜访计划</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://webapi.amap.com/maps?v=2.0&key=dbaa58c5be00491d752d3d671593c80b&plugin=AMap.Driving,AMap.Geocoder"></script>
+<style>
+:root {
+  --primary: #007AFF;
+  --primary-light: #E3F2FD;
+  --success: #34C759;
+  --warning: #FF9500;
+  --danger: #FF3B30;
+  --bg: #F2F2F7;
+  --card: #FFFFFF;
+  --text: #1C1C1E;
+  --text-secondary: #8E8E93;
+  --border: #E5E5EA;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --radius: 16px;
+  --safe-top: env(safe-area-inset-top, 20px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nav-height: 56px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Helvetica Neue', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding-top: calc(var(--safe-top) + 8px);
+  padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 12px);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+/* Header */
+.header {
+  padding: 8px 20px 12px;
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header h1 { font-size: 28px; font-weight: 700; }
+.header-sub { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+/* Bottom Nav */
+.bottom-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: calc(var(--nav-height) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 0.5px solid var(--border);
+  display: flex;
+  z-index: 200;
+}
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.2s;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.nav-item.active { color: var(--primary); }
+.nav-icon { font-size: 24px; line-height: 1; }
+/* Cards */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin: 0 16px 12px;
+  padding: 16px;
+  overflow: hidden;
+}
+.card-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: none;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.btn-primary { background: var(--primary); color: #fff; width: 100%; }
+.btn-primary:active { background: #0056CC; transform: scale(0.98); }
+.btn-primary:disabled { background: #B0BEC5; }
+.btn-outline {
+  background: transparent;
+  color: var(--primary);
+  border: 1.5px solid var(--primary);
+  padding: 8px 16px;
+  font-size: 14px;
+}
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-small { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
+.btn-icon {
+  width: 36px; height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 18px;
+}
+/* Inputs */
+.input-group { margin-bottom: 12px; }
+.input-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; display: block; font-weight: 500; }
+textarea, input[type="text"], input[type="date"] {
+  width: 100%;
+  padding: 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  font-size: 15px;
+  font-family: inherit;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.2s;
+}
+textarea:focus, input:focus { outline: none; border-color: var(--primary); }
+textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
+/* Supplier Cards */
+.supplier-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.supplier-card.dragging { opacity: 0.5; transform: scale(0.98); }
+.supplier-header {
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: grab;
+}
+.supplier-index {
+  width: 28px; height: 28px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.supplier-info { flex: 1; min-width: 0; }
+.supplier-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.supplier-address { font-size: 13px; color: var(--text-secondary); line-height: 1.4; word-break: break-all; }
+.supplier-contact { font-size: 13px; color: var(--primary); margin-top: 4px; }
+.supplier-status {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.status-pending { background: #FFF3E0; color: #E65100; }
+.status-visited { background: #E8F5E9; color: #2E7D32; }
+.status-skipped { background: #F5F5F5; color: #757575; }
+.supplier-actions {
+  padding: 8px 16px 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* Route Arrow */
+.route-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  gap: 8px;
+}
+.route-arrow .arrow-line {
+  width: 2px;
+  height: 24px;
+  background: var(--primary-light);
+  position: relative;
+}
+.route-arrow .arrow-line::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--primary-light);
+}
+.route-info {
+  background: var(--primary-light);
+  padding: 4px 12px;
+  border-radius: 20px;
+  color: var(--primary);
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* Day Group */
+.day-group { margin: 0 0 20px; }
+.day-header {
+  background: linear-gradient(135deg, var(--primary), #5856D6);
+  color: #fff;
+  padding: 14px 20px;
+  margin: 0 16px 12px;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,122,255,0.3);
+}
+.day-title { font-size: 18px; font-weight: 700; }
+.day-stats {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+.day-stat { display: flex; align-items: center; gap: 4px; }
+/* Visit Record */
+.visit-record {
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+}
+.visit-record-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.record-media {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.media-btn {
+  width: 48px; height: 48px;
+  border-radius: 12px;
+  border: 1.5px dashed var(--border);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+.media-btn:active { background: var(--primary-light); border-color: var(--primary); }
+.media-preview {
+  width: 48px; height: 48px;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+.media-preview img { width: 100%; height: 100%; object-fit: cover; }
+.media-preview .remove-btn {
+  position: absolute;
+  top: -4px; right: -4px;
+  width: 20px; height: 20px;
+  background: var(--danger);
+  color: #fff;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.recording { animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.5; } }
+/* Map Container */
+.map-container {
+  width: 100%;
+  height: 200px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+/* History */
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 0.5px solid var(--border);
+  cursor: pointer;
+}
+.history-item:last-child { border-bottom: none; }
+.history-icon { font-size: 32px; }
+.history-info { flex: 1; }
+.history-title { font-size: 16px; font-weight: 600; }
+.history-date { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.history-meta { font-size: 12px; color: var(--text-secondary); }
+/* Settings */
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+.setting-item:last-child { border-bottom: none; }
+.setting-label { font-size: 15px; }
+.setting-value { font-size: 15px; color: var(--text-secondary); }
+/* Loading */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  gap: 16px;
+}
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 15px; color: var(--text-secondary); }
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+}
+.empty-icon { font-size: 64px; margin-bottom: 16px; }
+.empty-text { font-size: 15px; line-height: 1.6; }
+/* Toast */
+.toast {
+  position: fixed;
+  top: calc(var(--safe-top) + 60px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.8);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 14px;
+  z-index: 1000;
+  animation: fadeInOut 2.5s forwards;
+  pointer-events: none;
+}
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* Modal */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.modal-content {
+  background: var(--card);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 20px;
+  padding-bottom: calc(20px + var(--safe-bottom));
+}
+.modal-handle {
+  width: 36px; height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  margin: 0 auto 16px;
+}
+.modal-title { font-size: 20px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+/* Date range */
+.date-range {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.date-range input { flex: 1; }
+.date-range span { color: var(--text-secondary); font-size: 14px; }
+/* Swipe Delete */
+.swipe-container { overflow: hidden; position: relative; }
+.swipe-content { transition: transform 0.3s; }
+.swipe-actions {
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  display: flex;
+}
+.swipe-action {
+  width: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+/* Map full */
+.map-full {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: var(--card);
+}
+.map-full-header {
+  position: absolute;
+  top: var(--safe-top);
+  left: 0; right: 0;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 401;
+}
+.map-full .amap-container { width: 100%; height: 100% !important; }
+/* Parse preview */
+.parse-preview {
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.parse-item {
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--border);
+  font-size: 14px;
+}
+.parse-item:last-child { border-bottom: none; }
+.parse-field { color: var(--text-secondary); font-size: 12px; }
+.parse-value { font-weight: 500; margin-top: 2px; }
+/* Tabs */
+.tabs {
+  display: flex;
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 2px;
+  margin-bottom: 12px;
+}
+.tab {
+  flex: 1;
+  padding: 8px;
+  text-align: center;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+.tab.active { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+/* Sticky action bar */
+.action-bar {
+  position: fixed;
+  bottom: calc(var(--nav-height) + var(--safe-bottom));
+  left: 0; right: 0;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(20px);
+  border-top: 0.5px solid var(--border);
+  z-index: 150;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Loading -->
+  <div class="loading-overlay" v-if="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">{{ loadingText }}</div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" v-if="toast" :key="toastKey">{{ toast }}</div>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>🏭 供应商拜访计划</h1>
+    <div class="header-sub">{{ headerSub }}</div>
+  </div>
+
+  <!-- ========== New Plan View ========== -->
+  <template v-if="currentView === 'new'">
+    <template v-if="!currentPlan">
+      <div class="card">
+        <div class="card-title">📋 粘贴供应商信息</div>
+        <div class="input-group">
+          <textarea v-model="rawText" placeholder="粘贴供应商信息，每行或每个供应商之间用空行分隔&#10;&#10;格式示例：&#10;深圳市XX电子有限公司&#10;地址：深圳市宝安区XX路XX号&#10;联系人：张三 13800138000&#10;&#10;东莞YY科技有限公司&#10;地址：东莞市长安镇XX工业区&#10;联系人：李四 13900139000"></textarea>
+        </div>
+        <div v-if="parsedSuppliers.length" class="parse-preview">
+          <div class="parse-item" v-for="(s, i) in parsedSuppliers" :key="i">
+            <div class="parse-field">供应商 {{ i + 1 }}</div>
+            <div class="parse-value">🏭 {{ s.name }}</div>
+            <div class="parse-value" style="font-size:13px;color:var(--text-secondary)">📍 {{ s.address }}</div>
+            <div class="parse-value" v-if="s.contact" style="font-size:13px;color:var(--primary)">👤 {{ s.contact }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">📅 出差时间段</div>
+        <div class="date-range">
+          <input type="date" v-model="startDate">
+          <span>~</span>
+          <input type="date" v-model="endDate">
+        </div>
+      </div>
+      <div style="padding: 0 16px 20px;">
+        <button class="btn btn-primary" @click="generatePlan" :disabled="!canGenerate">
+          🗺️ 生成拜访计划
+        </button>
+      </div>
+    </template>
+
+    <!-- Plan Result -->
+    <template v-else>
+      <!-- Map -->
+      <div class="card" v-if="showMap">
+        <div class="map-container" ref="mapContainer"></div>
+      </div>
+      <div style="padding: 0 16px 12px; display:flex; gap:8px;">
+        <button class="btn btn-outline btn-small" @click="showMap = !showMap">
+          {{ showMap ? '隐藏地图' : '显示地图' }}
+        </button>
+        <button class="btn btn-outline btn-small" @click="addSupplierModal = true">➕ 添加供应商</button>
+        <button class="btn btn-outline btn-small" @click="resetPlan" style="color:var(--danger);border-color:var(--danger)">🔄 重新规划</button>
+      </div>
+
+      <!-- Day Groups -->
+      <div class="day-group" v-for="(day, di) in currentPlan.days" :key="di">
+        <div class="day-header">
+          <div class="day-title">📅 第{{ di + 1 }}天 · {{ formatDate(day.date) }}</div>
+          <div class="day-stats">
+            <span class="day-stat">📍 {{ day.suppliers.length }} 个供应商</span>
+            <span class="day-stat">🚗 {{ day.totalDistance }}</span>
+            <span class="day-stat">⏱️ {{ day.totalTime }}</span>
+          </div>
+        </div>
+
+        <template v-for="(item, si) in day.suppliers" :key="item.id">
+          <!-- Route Arrow -->
+          <div class="route-arrow" v-if="si > 0">
+            <div class="route-info">🚗 {{ item.routeDist }} · {{ item.routeTime }}</div>
+          </div>
+          <!-- Supplier Card -->
+          <div class="supplier-card" draggable="true"
+            @dragstart="onDragStart(di, si, $event)"
+            @dragover.prevent
+            @drop="onDrop(di, si, $event)"
+            @touchstart="onTouchStart(di, si, $event)"
+            @touchmove="onTouchMove($event)"
+            @touchend="onTouchEnd($event)">
+            <div class="supplier-header">
+              <div class="supplier-index">{{ si + 1 }}</div>
+              <div class="supplier-info">
+                <div class="supplier-name">{{ item.name }}</div>
+                <div class="supplier-address">{{ item.address }}</div>
+                <div class="supplier-contact" v-if="item.contact">👤 {{ item.contact }}</div>
+              </div>
+              <span class="supplier-status" :class="'status-' + item.status"
+                @click="cycleStatus(item)">
+                {{ statusText[item.status] }}
+              </span>
+            </div>
+            <div class="supplier-actions">
+              <button class="btn btn-outline btn-small" @click="editSupplier(item)">✏️ 编辑</button>
+              <button class="btn btn-outline btn-small" @click="moveToOtherDay(di, si)">📅 移到其他天</button>
+              <button class="btn btn-outline btn-small" @click="removeSupplier(di, si)" style="color:var(--danger);border-color:var(--danger)">🗑️ 删除</button>
+            </div>
+            <!-- Visit Record -->
+            <div class="visit-record">
+              <div class="visit-record-title" @click="item.showRecord = !item.showRecord">
+                📝 拜访记录 <span style="font-size:12px;color:var(--text-secondary)">{{ item.showRecord ? '▲' : '▼' }}</span>
+              </div>
+              <template v-if="item.showRecord">
+                <textarea v-model="item.record.notes" placeholder="记录拜访内容..." rows="3"></textarea>
+                <div class="record-media">
+                  <label class="media-btn" :class="{ recording: item.recording }">
+                    📷
+                    <input type="file" accept="image/*" capture="environment" style="display:none" @change="onFileUpload($event, item, 'image')">
+                  </label>
+                  <label class="media-btn">
+                    🖼️
+                    <input type="file" accept="image/*" style="display:none" @change="onFileUpload($event, item, 'image')">
+                  </label>
+                  <button class="media-btn" @click="toggleRecording(item)" :class="{ recording: item.recording }">
+                    {{ item.recording ? '⏹️' : '🎙️' }}
+                  </button>
+                  <label class="media-btn">
+                    🎬
+                    <input type="file" accept="video/*" style="display:none" @change="onFileUpload($event, item, 'video')">
+                  </label>
+                  <div class="media-preview" v-for="(media, mi) in item.record.media" :key="mi">
+                    <img v-if="media.type === 'image'" :src="media.thumbnail || media.url">
+                    <div v-else style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--bg);font-size:20px">
+                      {{ media.type === 'video' ? '🎬' : '🎙️' }}
+                    </div>
+                    <div class="remove-btn" @click="removeMedia(item, mi)">✕</div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Save Button -->
+      <div class="action-bar">
+        <button class="btn btn-primary" @click="savePlan">💾 保存计划</button>
+      </div>
+    </template>
+  </template>
+
+  <!-- ========== History View ========== -->
+  <template v-if="currentView === 'history'">
+    <div v-if="!history.length" class="empty-state">
+      <div class="empty-icon">📂</div>
+      <div class="empty-text">暂无历史记录<br>创建并保存计划后会显示在这里</div>
+    </div>
+    <template v-else>
+      <div class="card" v-for="plan in history" :key="plan.id">
+        <div class="history-item" @click="loadPlan(plan)">
+          <div class="history-icon">📋</div>
+          <div class="history-info">
+            <div class="history-title">{{ plan.name || '拜访计划' }}</div>
+            <div class="history-date">{{ formatDate(plan.startDate) }} ~ {{ formatDate(plan.endDate) }}</div>
+            <div class="history-meta">{{ plan.totalSuppliers }} 个供应商 · {{ plan.totalDays }} 天</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;padding:0 16px 12px;">
+          <button class="btn btn-outline btn-small" @click="loadPlan(plan)">📂 查看</button>
+          <button class="btn btn-outline btn-small" style="color:var(--danger);border-color:var(--danger)" @click="deletePlan(plan)">🗑️ 删除</button>
+        </div>
+      </div>
+    </template>
+  </template>
+
+  <!-- ========== Settings View ========== -->
+  <template v-if="currentView === 'settings'">
+    <div class="card">
+      <div class="card-title">⚙️ 设置</div>
+      <div class="setting-item">
+        <span class="setting-label">每天工作时长</span>
+        <span class="setting-value">{{ settings.workHours }}小时</span>
+      </div>
+      <div class="input-group" style="margin-top:8px">
+        <input type="range" min="4" max="12" v-model.number="settings.workHours" style="width:100%">
+      </div>
+      <div class="setting-item">
+        <span class="setting-label">出发时间</span>
+        <input type="text" v-model="settings.startTime" style="width:80px;text-align:center;padding:8px">
+      </div>
+      <div class="setting-item">
+        <span class="setting-label">独立区域距离阈值</span>
+        <span class="setting-value">{{ settings.isolatedThreshold }}km</span>
+      </div>
+      <div class="input-group" style="margin-top:8px">
+        <input type="range" min="10" max="100" step="5" v-model.number="settings.isolatedThreshold" style="width:100%">
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 数据管理</div>
+      <div class="setting-item">
+        <span class="setting-label">历史计划数</span>
+        <span class="setting-value">{{ history.length }}</span>
+      </div>
+      <button class="btn btn-danger btn-small" style="margin-top:12px" @click="clearAllData">🗑️ 清除所有数据</button>
+    </div>
+    <div class="card">
+      <div class="card-title">ℹ️ 关于</div>
+      <p style="font-size:14px;color:var(--text-secondary);line-height:1.6">
+        供应商拜访计划工具 v1.0<br>
+        使用高德地图API提供路线规划<br>
+        数据存储在本地IndexedDB中
+      </p>
+    </div>
+  </template>
+
+  <!-- ========== Add/Edit Supplier Modal ========== -->
+  <div class="modal-mask" v-if="addSupplierModal || editSupplierModal" @click.self="closeModal">
+    <div class="modal-content">
+      <div class="modal-handle"></div>
+      <div class="modal-title">{{ editSupplierModal ? '编辑供应商' : '添加供应商' }}</div>
+      <div class="input-group">
+        <label class="input-label">供应商名称</label>
+        <input type="text" v-model="supplierForm.name" placeholder="公司名称">
+      </div>
+      <div class="input-group">
+        <label class="input-label">地址</label>
+        <input type="text" v-model="supplierForm.address" placeholder="详细地址">
+      </div>
+      <div class="input-group">
+        <label class="input-label">联系人</label>
+        <input type="text" v-model="supplierForm.contact" placeholder="姓名 电话">
+      </div>
+      <button class="btn btn-primary" @click="confirmSupplier" style="margin-top:8px">
+        {{ editSupplierModal ? '保存修改' : '添加' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ========== Move to Day Modal ========== -->
+  <div class="modal-mask" v-if="moveDayModal" @click.self="moveDayModal = false">
+    <div class="modal-content">
+      <div class="modal-handle"></div>
+      <div class="modal-title">选择目标天</div>
+      <div v-for="(day, di) in currentPlan.days" :key="di"
+        style="padding:14px 0;border-bottom:0.5px solid var(--border);cursor:pointer"
+        @click="confirmMoveDay(di)">
+        📅 第{{ di + 1 }}天 · {{ formatDate(day.date) }}
+        <span style="float:right;color:var(--text-secondary)">{{ day.suppliers.length }} 个</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== Full Map View ========== -->
+  <div class="map-full" v-if="showFullMap">
+    <div class="map-full-header">
+      <button class="btn btn-outline btn-small" @click="showFullMap = false" style="background:rgba(255,255,255,0.9)">✕ 关闭</button>
+    </div>
+    <div ref="fullMapContainer" style="width:100%;height:100%"></div>
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="bottom-nav">
+    <div class="nav-item" :class="{ active: currentView === 'new' }" @click="switchView('new')">
+      <span class="nav-icon">📋</span>
+      <span>新建计划</span>
+    </div>
+    <div class="nav-item" :class="{ active: currentView === 'history' }" @click="switchView('history')">
+      <span class="nav-icon">📂</span>
+      <span>历史记录</span>
+    </div>
+    <div class="nav-item" :class="{ active: currentView === 'settings' }" @click="switchView('settings')">
+      <span class="nav-icon">⚙️</span>
+      <span>设置</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const DB_NAME = 'SupplierVisitPlanner';
+const DB_VERSION = 2;
+const STORE_PLANS = 'plans';
+const STORE_MEDIA = 'media';
+
+// ========== IndexedDB Helper ==========
+class LocalDB {
+  constructor() {
+    this.db = null;
+  }
+  async open() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_PLANS)) {
+          db.createObjectStore(STORE_PLANS, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(STORE_MEDIA)) {
+          db.createObjectStore(STORE_MEDIA, { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = (e) => { this.db = e.target.result; resolve(); };
+      req.onerror = (e) => reject(e);
+    });
+  }
+  async getAll(store) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(store, 'readonly');
+      const s = tx.objectStore(store);
+      const req = s.getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async put(store, data) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(store, 'readwrite');
+      const s = tx.objectStore(store);
+      const req = s.put(data);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async delete(store, id) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(store, 'readwrite');
+      const s = tx.objectStore(store);
+      const req = s.delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async clear(store) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(store, 'readwrite');
+      const s = tx.objectStore(store);
+      const req = s.clear();
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+}
+
+const db = new LocalDB();
+const geocoder = new AMap.Geocoder();
+
+// ========== Vue App ==========
+const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
+
+const app = createApp({
+  setup() {
+    // State
+    const currentView = ref('new');
+    const loading = ref(false);
+    const loadingText = ref('');
+    const toast = ref('');
+    const toastKey = ref(0);
+    const rawText = ref('');
+    const startDate = ref('');
+    const endDate = ref('');
+    const currentPlan = ref(null);
+    const history = ref([]);
+    const showMap = ref(false);
+    const showFullMap = ref(false);
+    const addSupplierModal = ref(false);
+    const editSupplierModal = ref(false);
+    const moveDayModal = ref(false);
+    const mapContainer = ref(null);
+    const fullMapContainer = ref(null);
+    let mapInstance = null;
+
+    const supplierForm = reactive({ name: '', address: '', contact: '', editId: null });
+    const moveInfo = reactive({ dayIdx: 0, supplierIdx: 0 });
+
+    const settings = reactive({
+      workHours: 8,
+      startTime: '09:00',
+      isolatedThreshold: 30
+    });
+
+    const statusText = { pending: '未拜访', visited: '已拜访', skipped: '跳过' };
+
+    // Computed
+    const parsedSuppliers = computed(() => parseSuppliers(rawText.value));
+    const canGenerate = computed(() => parsedSuppliers.value.length > 0 && startDate.value && endDate.value);
+    const headerSub = computed(() => {
+      if (currentView.value === 'new' && currentPlan.value) return '当前计划进行中';
+      if (currentView.value === 'history') return `${history.value.length} 个历史计划`;
+      if (currentView.value === 'settings') return '个性化配置';
+      return '输入供应商信息，自动规划最优拜访路线';
+    });
+
+    // Toast
+    function showToast(msg) {
+      toast.value = '';
+      nextTick(() => { toast.value = msg; toastKey.value++; });
+    }
+
+    // Parse suppliers from text
+    function parseSuppliers(text) {
+      if (!text.trim()) return [];
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      const suppliers = [];
+      let current = null;
+
+      for (const line of lines) {
+        // Check if this line is a company name (contains 公司/厂/集团/有限/科技/电子/实业)
+        const isCompanyName = /公司|工厂|集团|有限|科技|电子|实业|制品|制造|工业|贸易/.test(line) && !/^地址[:：]|^联系|^电话|^手机|^TEL|^tel|^Tel/.test(line);
+        const isAddress = /^地址[:：]|^addr|^Addr|省|市|区|镇|路|街|号|栋|楼|室|工业区|产业园|开发区/.test(line) && !isCompanyName;
+        const isContact = /^联系|^电话|^手机|^TEL|^tel|^Tel|1[3-9]\d{9}/.test(line);
+
+        if (isCompanyName && !isAddress) {
+          if (current) suppliers.push(current);
+          current = { name: line.replace(/^[\d.、)\s]+/, ''), address: '', contact: '' };
+        } else if (isAddress && current) {
+          current.address = line.replace(/^地址[:：]\s*/, '').replace(/^地址[:：]\s*/, '');
+        } else if (isContact && current) {
+          current.contact = line.replace(/^联系人?[:：]\s*/, '').replace(/^电话[:：]\s*/, '').replace(/^手机[:：]\s*/, '');
+        } else if (current && !current.address && /路|街|号|栋|楼|室|工业区|产业园/.test(line)) {
+          current.address = line;
+        } else if (current && !current.contact && /1[3-9]\d{9}/.test(line)) {
+          current.contact = line;
+        } else if (!current) {
+          // Might be first line - try as company name
+          if (line.length > 2) {
+            current = { name: line.replace(/^[\d.、)\s]+/, ''), address: '', contact: '' };
+          }
+        }
+      }
+      if (current) suppliers.push(current);
+      return suppliers.filter(s => s.name && s.address);
+    }
+
+    // Geocode address
+    async function geocodeAddress(address) {
+      return new Promise((resolve) => {
+        geocoder.getLocation(address, (status, result) => {
+          if (status === 'complete' && result.geocodes.length > 0) {
+            const loc = result.geocodes[0].location;
+            resolve({ lng: loc.lng, lat: loc.lat, formattedAddress: result.geocodes[0].formattedAddress });
+          } else {
+            resolve(null);
+          }
+        });
+      });
+    }
+
+    // Driving route
+    async function getDrivingRoute(from, to) {
+      return new Promise((resolve) => {
+        const driving = new AMap.Driving({ policy: AMap.DrivingPolicy.LEAST_TIME });
+        driving.search(
+          new AMap.LngLat(from.lng, from.lat),
+          new AMap.LngLat(to.lng, to.lat),
+          (status, result) => {
+            if (status === 'complete' && result.routes.length > 0) {
+              const route = result.routes[0];
+              resolve({ distance: route.distance, duration: route.time });
+            } else {
+              // Fallback: straight line distance
+              const dist = AMap.GeometryUtil.distance([from.lng, from.lat], [to.lng, to.lat]);
+              resolve({ distance: dist, duration: dist / 40 * 3.6 }); // ~40km/h avg
+            }
+          }
+        );
+      });
+    }
+
+    // Format distance/time
+    function formatDist(meters) {
+      return meters >= 1000 ? (meters / 1000).toFixed(1) + 'km' : Math.round(meters) + 'm';
+    }
+    function formatTime(seconds) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.ceil((seconds % 3600) / 60);
+      return h > 0 ? `${h}小时${m}分钟` : `${m}分钟`;
+    }
+    function formatTimeShort(seconds) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.ceil((seconds % 3600) / 60);
+      return h > 0 ? `${h}h${m}m` : `${m}min`;
+    }
+
+    // Greedy nearest neighbor route planning
+    async function planRoute(suppliers) {
+      loading.value = true;
+      loadingText.value = '正在解析地址...';
+
+      // Geocode all
+      const geoResults = [];
+      for (let i = 0; i < suppliers.length; i++) {
+        loadingText.value = `解析地址 ${i + 1}/${suppliers.length}...`;
+        const geo = await geocodeAddress(suppliers[i].address);
+        geoResults.push(geo);
+        if (!geo) {
+          showToast(`⚠️ 无法解析: ${suppliers[i].address}`);
+        }
+      }
+
+      // Filter valid
+      const valid = suppliers.map((s, i) => ({
+        ...s,
+        id: 's_' + Date.now() + '_' + i,
+        location: geoResults[i],
+        status: 'pending',
+        showRecord: false,
+        recording: false,
+        record: { notes: '', media: [] }
+      })).filter(s => s.location);
+
+      if (valid.length === 0) {
+        showToast('没有有效的地址，请检查输入');
+        loading.value = false;
+        return null;
+      }
+
+      loadingText.value = '计算路线距离...';
+
+      // Build distance matrix using driving API
+      const n = valid.length;
+      const distMatrix = Array(n).fill(null).map(() => Array(n).fill(Infinity));
+      const timeMatrix = Array(n).fill(null).map(() => Array(n).fill(Infinity));
+
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          loadingText.value = `计算路线 ${i + 1}-${j + 1}/${n}...`;
+          const route = await getDrivingRoute(valid[i].location, valid[j].location);
+          distMatrix[i][j] = route.distance;
+          distMatrix[j][i] = route.distance;
+          timeMatrix[i][j] = route.duration;
+          timeMatrix[j][i] = route.duration;
+        }
+        distMatrix[i][i] = 0;
+        timeMatrix[i][i] = 0;
+      }
+
+      loadingText.value = '优化拜访顺序...';
+
+      // Identify isolated suppliers (> threshold from all others)
+      const threshold = settings.isolatedThreshold * 1000;
+      const isolated = [];
+      const nonIsolated = [];
+      for (let i = 0; i < n; i++) {
+        let minDist = Infinity;
+        for (let j = 0; j < n; j++) {
+          if (i !== j) minDist = Math.min(minDist, distMatrix[i][j]);
+        }
+        if (minDist > threshold) {
+          isolated.push(i);
+        } else {
+          nonIsolated.push(i);
+        }
+      }
+
+      // Greedy nearest neighbor for non-isolated
+      const ordered = [];
+      if (nonIsolated.length > 0) {
+        const visited = new Set();
+        let current = nonIsolated[0];
+        visited.add(current);
+        ordered.push(current);
+
+        while (ordered.length < nonIsolated.length) {
+          let nearest = -1;
+          let nearestDist = Infinity;
+          for (const idx of nonIsolated) {
+            if (!visited.has(idx) && distMatrix[current][idx] < nearestDist) {
+              nearestDist = distMatrix[current][idx];
+              nearest = idx;
+            }
+          }
+          if (nearest >= 0) {
+            visited.add(nearest);
+            ordered.push(nearest);
+            current = nearest;
+          }
+        }
+      }
+
+      // Assign to days
+      const start = new Date(startDate.value);
+      const end = new Date(endDate.value);
+      const totalDays = Math.max(1, Math.ceil((end - start) / 86400000) + 1);
+      const workSeconds = settings.workHours * 3600;
+      const [startH, startM] = settings.startTime.split(':').map(Number);
+      const startSeconds = startH * 3600 + startM * 60;
+
+      const days = [];
+      let dayIdx = 0;
+      let dayTime = 0;
+      let daySuppliers = [];
+      let dayDist = 0;
+      let prevIdx = null;
+
+      // Schedule isolated on first day morning or last day
+      const isolatedScheduled = new Set();
+
+      function startNewDay() {
+        if (daySuppliers.length > 0) {
+          days.push({
+            date: new Date(start.getTime() + (dayIdx) * 86400000).toISOString().split('T')[0],
+            suppliers: daySuppliers,
+            totalDistance: formatDist(dayDist),
+            totalTime: formatTime(dayTime)
+          });
+        }
+        dayIdx++;
+        dayTime = 0;
+        dayDist = 0;
+        daySuppliers = [];
+        prevIdx = null;
+      }
+
+      // First day: add isolated suppliers first (morning run)
+      if (isolated.length > 0 && dayIdx === 0) {
+        for (const isoIdx of isolated) {
+          const s = valid[isoIdx];
+          s._isolated = true;
+          const travelTime = prevIdx !== null ? timeMatrix[prevIdx][isoIdx] : 0;
+          const travelDist = prevIdx !== null ? distMatrix[prevIdx][isoIdx] : 0;
+          const visitTime = 30 * 60; // 30 min visit
+
+          if (dayTime + travelTime + visitTime > workSeconds && daySuppliers.length > 0) {
+            startNewDay();
+          }
+
+          daySuppliers.push({
+            ...s,
+            routeDist: prevIdx !== null ? formatDist(travelDist) : '起点',
+            routeTime: prevIdx !== null ? formatTime(travelTime) : ''
+          });
+          dayTime += travelTime + visitTime;
+          dayDist += travelDist;
+          prevIdx = isoIdx;
+          isolatedScheduled.add(isoIdx);
+        }
+        startNewDay();
+      }
+
+      // Schedule non-isolated
+      for (const idx of ordered) {
+        const travelTime = prevIdx !== null ? timeMatrix[prevIdx][idx] : 0;
+        const travelDist = prevIdx !== null ? distMatrix[prevIdx][idx] : 0;
+        const visitTime = 30 * 60;
+
+        if (dayTime + travelTime + visitTime > workSeconds && daySuppliers.length > 0) {
+          startNewDay();
+        }
+
+        daySuppliers.push({
+          ...valid[idx],
+          routeDist: prevIdx !== null ? formatDist(travelDist) : '起点',
+          routeTime: prevIdx !== null ? formatTime(travelTime) : ''
+        });
+        dayTime += travelTime + visitTime;
+        dayDist += travelDist;
+        prevIdx = idx;
+      }
+
+      // Remaining isolated not yet scheduled
+      for (const isoIdx of isolated) {
+        if (!isolatedScheduled.has(isoIdx)) {
+          const s = valid[isoIdx];
+          s._isolated = true;
+          const travelTime = prevIdx !== null ? timeMatrix[prevIdx][isoIdx] : 0;
+          const travelDist = prevIdx !== null ? distMatrix[prevIdx][isoIdx] : 0;
+          const visitTime = 30 * 60;
+
+          if (dayTime + travelTime + visitTime > workSeconds && daySuppliers.length > 0) {
+            startNewDay();
+          }
+
+          daySuppliers.push({
+            ...s,
+            routeDist: prevIdx !== null ? formatDist(travelDist) : '起点',
+            routeTime: prevIdx !== null ? formatTime(travelTime) : ''
+          });
+          dayTime += travelTime + visitTime;
+          dayDist += travelDist;
+          prevIdx = isoIdx;
+        }
+      }
+
+      // Push last day
+      if (daySuppliers.length > 0) {
+        days.push({
+          date: new Date(start.getTime() + dayIdx * 86400000).toISOString().split('T')[0],
+          suppliers: daySuppliers,
+          totalDistance: formatDist(dayDist),
+          totalTime: formatTime(dayTime)
+        });
+      }
+
+      loading.value = false;
+      return {
+        id: 'plan_' + Date.now(),
+        name: '拜访计划 ' + formatDate(start.toISOString()),
+        startDate: startDate.value,
+        endDate: endDate.value,
+        days,
+        totalSuppliers: valid.length,
+        totalDays: days.length,
+        createdAt: new Date().toISOString()
+      };
+    }
+
+    // Generate plan
+    async function generatePlan() {
+      const suppliers = parsedSuppliers.value;
+      if (!suppliers.length || !startDate.value || !endDate.value) return;
+      const plan = await planRoute(suppliers);
+      if (plan) {
+        currentPlan.value = plan;
+        showMap.value = true;
+        nextTick(() => renderMap());
+      }
+    }
+
+    // Render map
+    function renderMap() {
+      if (!mapContainer.value || !currentPlan.value) return;
+      if (mapInstance) { mapInstance.destroy(); mapInstance = null; }
+      mapInstance = new AMap.Map(mapContainer.value, {
+        zoom: 10,
+        resizeEnable: true,
+        viewMode: '2D'
+      });
+
+      const markers = [];
+      const colors = ['#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#5856D6', '#AF52DE', '#FF2D55'];
+
+      currentPlan.value.days.forEach((day, di) => {
+        const color = colors[di % colors.length];
+        day.suppliers.forEach((s, si) => {
+          if (!s.location) return;
+          const marker = new AMap.Marker({
+            position: [s.location.lng, s.location.lat],
+            label: {
+              content: `<div style="background:${color};color:#fff;padding:2px 6px;border-radius:4px;font-size:11px;white-space:nowrap">D${di + 1}-${si + 1}</div>`,
+              direction: 'top'
+            },
+            title: s.name
+          });
+          markers.push(marker);
+
+          // Draw route line between consecutive suppliers
+          if (si > 0) {
+            const prev = day.suppliers[si - 1];
+            if (prev.location) {
+              const line = new AMap.Polyline({
+                path: [[prev.location.lng, prev.location.lat], [s.location.lng, s.location.lat]],
+                strokeColor: color,
+                strokeWeight: 3,
+                strokeOpacity: 0.7,
+                strokeStyle: 'dashed'
+              });
+              mapInstance.add(line);
+            }
+          }
+        });
+      });
+
+      mapInstance.add(markers);
+      mapInstance.setFitView(markers, false, [40, 40, 40, 40]);
+    }
+
+    // Drag & Drop
+    let dragInfo = { dayIdx: -1, supplierIdx: -1 };
+    function onDragStart(di, si, e) {
+      dragInfo = { dayIdx: di, supplierIdx: si };
+      e.dataTransfer.effectAllowed = 'move';
+    }
+    function onDrop(di, si, e) {
+      if (dragInfo.dayIdx === di && dragInfo.supplierIdx !== si) {
+        const day = currentPlan.value.days[di];
+        const item = day.suppliers.splice(dragInfo.supplierIdx, 1)[0];
+        day.suppliers.splice(si, 0, item);
+      }
+      dragInfo = { dayIdx: -1, supplierIdx: -1 };
+    }
+
+    // Touch drag (simplified)
+    let touchDrag = { dayIdx: -1, supplierIdx: -1, startY: 0 };
+    function onTouchStart(di, si, e) {
+      touchDrag = { dayIdx: di, supplierIdx: si, startY: e.touches[0].clientY };
+    }
+    function onTouchMove(e) {
+      // Prevent scroll during drag
+    }
+    function onTouchEnd(e) {
+      touchDrag = { dayIdx: -1, supplierIdx: -1, startY: 0 };
+    }
+
+    // Supplier actions
+    function cycleStatus(item) {
+      const states = ['pending', 'visited', 'skipped'];
+      const idx = states.indexOf(item.status);
+      item.status = states[(idx + 1) % 3];
+    }
+
+    function editSupplier(item) {
+      supplierForm.name = item.name;
+      supplierForm.address = item.address;
+      supplierForm.contact = item.contact || '';
+      supplierForm.editId = item.id;
+      editSupplierModal.value = true;
+    }
+
+    function removeSupplier(di, si) {
+      if (confirm('确定删除此供应商？')) {
+        currentPlan.value.days[di].suppliers.splice(si, 1);
+        if (currentPlan.value.days[di].suppliers.length === 0) {
+          currentPlan.value.days.splice(di, 1);
+        }
+      }
+    }
+
+    function moveToOtherDay(di, si) {
+      moveInfo.dayIdx = di;
+      moveInfo.supplierIdx = si;
+      moveDayModal.value = true;
+    }
+
+    function confirmMoveDay(targetDay) {
+      const src = currentPlan.value.days[moveInfo.dayIdx];
+      const item = src.suppliers.splice(moveInfo.supplierIdx, 1)[0];
+      item.routeDist = '手动调整';
+      item.routeTime = '';
+      currentPlan.value.days[targetDay].suppliers.push(item);
+      if (src.suppliers.length === 0) {
+        currentPlan.value.days.splice(moveInfo.dayIdx, 1);
+      }
+      moveDayModal.value = false;
+    }
+
+    async function confirmSupplier() {
+      if (!supplierForm.name || !supplierForm.address) {
+        showToast('请填写名称和地址');
+        return;
+      }
+      if (editSupplierModal.value && supplierForm.editId) {
+        // Find and update
+        for (const day of currentPlan.value.days) {
+          const s = day.suppliers.find(s => s.id === supplierForm.editId);
+          if (s) {
+            s.name = supplierForm.name;
+            s.address = supplierForm.address;
+            s.contact = supplierForm.contact;
+            break;
+          }
+        }
+        editSupplierModal.value = false;
+      } else {
+        // Geocode and add
+        loading.value = true;
+        loadingText.value = '解析新供应商地址...';
+        const geo = await geocodeAddress(supplierForm.address);
+        loading.value = false;
+        if (!geo) {
+          showToast('地址解析失败，请检查');
+          return;
+        }
+        const newSupplier = {
+          id: 's_' + Date.now(),
+          name: supplierForm.name,
+          address: supplierForm.address,
+          contact: supplierForm.contact,
+          location: geo,
+          status: 'pending',
+          showRecord: false,
+          recording: false,
+          record: { notes: '', media: [] },
+          routeDist: '手动添加',
+          routeTime: ''
+        };
+        if (currentPlan.value.days.length > 0) {
+          currentPlan.value.days[currentPlan.value.days.length - 1].suppliers.push(newSupplier);
+        } else {
+          currentPlan.value.days.push({
+            date: currentPlan.value.startDate,
+            suppliers: [newSupplier],
+            totalDistance: '0',
+            totalTime: '0'
+          });
+        }
+        addSupplierModal.value = false;
+      }
+      supplierForm.name = '';
+      supplierForm.address = '';
+      supplierForm.contact = '';
+      supplierForm.editId = null;
+    }
+
+    function closeModal() {
+      addSupplierModal.value = false;
+      editSupplierModal.value = false;
+      supplierForm.name = '';
+      supplierForm.address = '';
+      supplierForm.contact = '';
+      supplierForm.editId = null;
+    }
+
+    // File upload
+    async function onFileUpload(e, item, type) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const mediaId = 'media_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        const blob = dataURLtoBlob(ev.target.result);
+        await db.put(STORE_MEDIA, { id: mediaId, blob, type: file.type });
+
+        const mediaItem = { id: mediaId, type, name: file.name, url: ev.target.result };
+        if (type === 'image') {
+          mediaItem.thumbnail = ev.target.result;
+        }
+        item.record.media.push(mediaItem);
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    }
+
+    // Audio recording
+    let mediaRecorder = null;
+    let audioChunks = [];
+    async function toggleRecording(item) {
+      if (item.recording) {
+        if (mediaRecorder) {
+          mediaRecorder.stop();
+          mediaRecorder = null;
+        }
+        item.recording = false;
+      } else {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+          mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+          mediaRecorder.onstop = async () => {
+            stream.getTracks().forEach(t => t.stop());
+            const blob = new Blob(audioChunks, { type: 'audio/webm' });
+            const reader = new FileReader();
+            reader.onload = async (ev) => {
+              const mediaId = 'media_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+              await db.put(STORE_MEDIA, { id: mediaId, blob, type: 'audio/webm' });
+              item.record.media.push({ id: mediaId, type: 'audio', name: '录音', url: ev.target.result });
+            };
+            reader.readAsDataURL(blob);
+          };
+          mediaRecorder.start();
+          item.recording = true;
+        } catch (err) {
+          showToast('无法访问麦克风');
+        }
+      }
+    }
+
+    function removeMedia(item, mi) {
+      const media = item.record.media[mi];
+      if (media.id) db.delete(STORE_MEDIA, media.id).catch(() => {});
+      item.record.media.splice(mi, 1);
+    }
+
+    function dataURLtoBlob(dataURL) {
+      const [header, data] = dataURL.split(',');
+      const mime = header.match(/:(.*?);/)[1];
+      const binary = atob(data);
+      const array = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+      return new Blob([array], { type: mime });
+    }
+
+    // Save plan
+    async function savePlan() {
+      if (!currentPlan.value) return;
+      loading.value = true;
+      loadingText.value = '保存计划...';
+      try {
+        await db.put(STORE_PLANS, JSON.parse(JSON.stringify(currentPlan.value)));
+        showToast('✅ 计划已保存');
+        await loadHistory();
+      } catch (err) {
+        showToast('保存失败: ' + err.message);
+      }
+      loading.value = false;
+    }
+
+    // Load history
+    async function loadHistory() {
+      const plans = await db.getAll(STORE_PLANS);
+      history.value = plans.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    function loadPlan(plan) {
+      currentPlan.value = JSON.parse(JSON.stringify(plan));
+      startDate.value = plan.startDate;
+      endDate.value = plan.endDate;
+      currentView.value = 'new';
+      showMap.value = true;
+      nextTick(() => renderMap());
+    }
+
+    async function deletePlan(plan) {
+      if (confirm('确定删除此计划？')) {
+        await db.delete(STORE_PLANS, plan.id);
+        await loadHistory();
+        showToast('已删除');
+      }
+    }
+
+    function resetPlan() {
+      if (confirm('确定重新规划？当前计划将丢失')) {
+        currentPlan.value = null;
+        showMap.value = false;
+        rawText.value = '';
+      }
+    }
+
+    async function clearAllData() {
+      if (confirm('确定清除所有数据？此操作不可恢复')) {
+        await db.clear(STORE_PLANS);
+        await db.clear(STORE_MEDIA);
+        await loadHistory();
+        currentPlan.value = null;
+        showToast('所有数据已清除');
+      }
+    }
+
+    function switchView(view) {
+      currentView.value = view;
+      if (view === 'history') loadHistory();
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+      return `${d.getMonth() + 1}月${d.getDate()}日 ${days[d.getDay()]}`;
+    }
+
+    // Init
+    onMounted(async () => {
+      await db.open();
+      await loadHistory();
+      // Set default dates
+      const today = new Date();
+      startDate.value = today.toISOString().split('T')[0];
+      const nextWeek = new Date(today.getTime() + 7 * 86400000);
+      endDate.value = nextWeek.toISOString().split('T')[0];
+    });
+
+    // Watch map toggle
+    watch(showMap, (val) => {
+      if (val) nextTick(() => renderMap());
+    });
+
+    return {
+      currentView, loading, loadingText, toast, toastKey,
+      rawText, startDate, endDate, currentPlan, history,
+      showMap, showFullMap, addSupplierModal, editSupplierModal, moveDayModal,
+      supplierForm, moveInfo, settings, statusText,
+      parsedSuppliers, canGenerate, headerSub,
+      mapContainer, fullMapContainer,
+      generatePlan, savePlan, loadPlan, deletePlan, resetPlan, clearAllData,
+      switchView, formatDate, showToast,
+      onDragStart, onDrop, onTouchStart, onTouchMove, onTouchEnd,
+      cycleStatus, editSupplier, removeSupplier, moveToOtherDay, confirmMoveDay,
+      confirmSupplier, closeModal,
+      onFileUpload, toggleRecording, removeMedia,
+      loadHistory
+    };
+  }
+});
+
+app.mount('#app');
+
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
