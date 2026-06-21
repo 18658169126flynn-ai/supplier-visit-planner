@@ -908,39 +908,62 @@ const app = createApp({
       nextTick(() => { toast.value = msg; toastKey.value++; });
     }
 
-    // Parse suppliers from text
+    // Parse suppliers from text - supports multiple formats
     function parseSuppliers(text) {
       if (!text.trim()) return [];
       const lines = text.split('\n').map(l => l.trim()).filter(l => l);
       const suppliers = [];
-      let current = null;
+      // Known address prefixes that indicate start of address, not a contact name
+      const addrPrefixes = /^(福建|福州|泉州|厦门|漳州|莆田|龙岩|三明|南平|宁德|广东省|浙江省|江苏省|上海市|北京市|省|市|区|镇|路|街|号)/;
 
       for (const line of lines) {
-        // Check if this line is a company name (contains 公司/厂/集团/有限/科技/电子/实业)
-        const isCompanyName = /公司|工厂|集团|有限|科技|电子|实业|制品|制造|工业|贸易/.test(line) && !/^地址[:：]|^联系|^电话|^手机|^TEL|^tel|^Tel/.test(line);
-        const isAddress = /^地址[:：]|^addr|^Addr|省|市|区|镇|路|街|号|栋|楼|室|工业区|产业园|开发区/.test(line) && !isCompanyName;
-        const isContact = /^联系|^电话|^手机|^TEL|^tel|^Tel|1[3-9]\d{9}/.test(line);
+        let name = '', address = '', contact = '';
 
-        if (isCompanyName && !isAddress) {
-          if (current) suppliers.push(current);
-          current = { name: line.replace(/^[\d.、)\s]+/, ''), address: '', contact: '' };
-        } else if (isAddress && current) {
-          current.address = line.replace(/^地址[:：]\s*/, '').replace(/^地址[:：]\s*/, '');
-        } else if (isContact && current) {
-          current.contact = line.replace(/^联系人?[:：]\s*/, '').replace(/^电话[:：]\s*/, '').replace(/^手机[:：]\s*/, '');
-        } else if (current && !current.address && /路|街|号|栋|楼|室|工业区|产业园/.test(line)) {
-          current.address = line;
-        } else if (current && !current.contact && /1[3-9]\d{9}/.test(line)) {
-          current.contact = line;
-        } else if (!current) {
-          // Might be first line - try as company name
-          if (line.length > 2) {
-            current = { name: line.replace(/^[\d.、)\s]+/, ''), address: '', contact: '' };
+        // Try comma separators (English , and Chinese ，)
+        const separators = [',', '，'];
+        for (const sep of separators) {
+          if (!name && line.includes(sep)) {
+            const idx = line.indexOf(sep);
+            const left = line.substring(0, idx).trim();
+            const right = line.substring(idx + 1).trim();
+            if (left.length >= 2) {
+              name = left;
+              // Check if right starts with a contact name (not an address prefix)
+              if (!addrPrefixes.test(right)) {
+                const m = right.match(/^([\u4e00-\u9fa5]{2,4})\s*(市|区|镇|路|街|号|福|泉)/);
+                if (m) { contact = m[1]; address = right.substring(m[1].length).trim(); }
+                else { address = right; }
+              } else {
+                address = right;
+              }
+            }
           }
         }
+
+        // Format: name-address (dash separator)
+        if (!name && line.includes('-') && !line.startsWith('-')) {
+          const idx = line.indexOf('-');
+          const left = line.substring(0, idx).trim();
+          const right = line.substring(idx + 1).trim();
+          if (left.length >= 2 && right.length >= 4) {
+            name = left;
+            address = right;
+          }
+        }
+
+        // Fallback: whole line as name
+        if (!name && line.length >= 2) name = line;
+
+        if (name) {
+          name = name.replace(/^[\d.、)\s]+/, '').replace(/^-|-$/, '').trim();
+          // Extract phone
+          const phoneMatch = (address + ' ' + contact).match(/1[3-9]\d{9}/);
+          if (phoneMatch && !contact) contact = phoneMatch[0];
+          else if (phoneMatch && contact && !contact.includes(phoneMatch[0])) contact = contact + ' ' + phoneMatch[0];
+          if (name && address) suppliers.push({ name, address, contact });
+        }
       }
-      if (current) suppliers.push(current);
-      return suppliers.filter(s => s.name && s.address);
+      return suppliers;
     }
 
     // Geocode address
