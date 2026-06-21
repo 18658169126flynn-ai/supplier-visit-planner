@@ -854,23 +854,19 @@ class LocalDB {
 }
 
 const db = new LocalDB();
-let geocoder = null;
 
-// Wait for AMap to be ready
+// Wait for AMap to be ready (for map display and driving routes)
 function ensureAMapReady() {
   return new Promise((resolve) => {
-    if (window.AMap && AMap.Geocoder) {
-      if (!geocoder) geocoder = new AMap.Geocoder();
+    if (window.AMap && AMap.Map) {
       resolve();
     } else {
       const check = setInterval(() => {
-        if (window.AMap && AMap.Geocoder) {
+        if (window.AMap && AMap.Map) {
           clearInterval(check);
-          if (!geocoder) geocoder = new AMap.Geocoder();
           resolve();
         }
       }, 200);
-      // Timeout after 10s
       setTimeout(() => { clearInterval(check); resolve(); }, 10000);
     }
   });
@@ -986,30 +982,31 @@ const app = createApp({
       return suppliers;
     }
 
-    // Geocode address with timeout
+    // Geocode address using Web Service API (more reliable)
     async function geocodeAddress(address) {
       return new Promise((resolve) => {
-        let resolved = false;
         const timer = setTimeout(() => {
-          if (!resolved) { resolved = true; console.warn('Geocode timeout:', address); resolve(null); }
+          console.warn('Geocode timeout:', address);
+          resolve(null);
         }, 8000);
-        try {
-          geocoder.getLocation(address, (status, result) => {
+        fetch(`https://restapi.amap.com/v3/geocode/geo?address=${encodeURIComponent(address)}&key=dbaa58c5be00491d752d3d671593c80b&output=json`)
+          .then(r => r.json())
+          .then(data => {
             clearTimeout(timer);
-            if (resolved) return;
-            resolved = true;
-            if (status === 'complete' && result && result.geocodes && result.geocodes.length > 0) {
-              const loc = result.geocodes[0].location;
-              resolve({ lng: loc.lng, lat: loc.lat, formattedAddress: result.geocodes[0].formattedAddress });
+            if (data.status === '1' && data.geocodes && data.geocodes.length > 0) {
+              const geo = data.geocodes[0];
+              const [lng, lat] = geo.location.split(',').map(Number);
+              resolve({ lng, lat, formattedAddress: geo.formatted_address });
             } else {
-              console.warn('Geocode failed:', address, status);
+              console.warn('Geocode failed:', address, data.info);
               resolve(null);
             }
+          })
+          .catch(e => {
+            clearTimeout(timer);
+            console.error('Geocode error:', address, e);
+            resolve(null);
           });
-        } catch (e) {
-          clearTimeout(timer);
-          if (!resolved) { resolved = true; console.error('Geocode error:', address, e); resolve(null); }
-        }
       });
     }
 
@@ -1292,11 +1289,6 @@ const app = createApp({
       loadingText.value = '正在初始化地图服务...';
       try {
         await ensureAMapReady();
-        if (!geocoder) {
-          showToast('⚠️ 地图服务加载失败，请刷新页面重试');
-          loading.value = false;
-          return;
-        }
         const plan = await planRoute(suppliers);
         if (plan) {
           currentPlan.value = plan;
