@@ -854,7 +854,27 @@ class LocalDB {
 }
 
 const db = new LocalDB();
-const geocoder = new AMap.Geocoder();
+let geocoder = null;
+
+// Wait for AMap to be ready
+function ensureAMapReady() {
+  return new Promise((resolve) => {
+    if (window.AMap && AMap.Geocoder) {
+      if (!geocoder) geocoder = new AMap.Geocoder();
+      resolve();
+    } else {
+      const check = setInterval(() => {
+        if (window.AMap && AMap.Geocoder) {
+          clearInterval(check);
+          if (!geocoder) geocoder = new AMap.Geocoder();
+          resolve();
+        }
+      }, 200);
+      // Timeout after 10s
+      setTimeout(() => { clearInterval(check); resolve(); }, 10000);
+    }
+  });
+}
 
 // ========== Vue App ==========
 const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
@@ -966,38 +986,63 @@ const app = createApp({
       return suppliers;
     }
 
-    // Geocode address
+    // Geocode address with timeout
     async function geocodeAddress(address) {
       return new Promise((resolve) => {
-        geocoder.getLocation(address, (status, result) => {
-          if (status === 'complete' && result.geocodes.length > 0) {
-            const loc = result.geocodes[0].location;
-            resolve({ lng: loc.lng, lat: loc.lat, formattedAddress: result.geocodes[0].formattedAddress });
-          } else {
-            resolve(null);
-          }
-        });
+        let resolved = false;
+        const timer = setTimeout(() => {
+          if (!resolved) { resolved = true; console.warn('Geocode timeout:', address); resolve(null); }
+        }, 8000);
+        try {
+          geocoder.getLocation(address, (status, result) => {
+            clearTimeout(timer);
+            if (resolved) return;
+            resolved = true;
+            if (status === 'complete' && result && result.geocodes && result.geocodes.length > 0) {
+              const loc = result.geocodes[0].location;
+              resolve({ lng: loc.lng, lat: loc.lat, formattedAddress: result.geocodes[0].formattedAddress });
+            } else {
+              console.warn('Geocode failed:', address, status);
+              resolve(null);
+            }
+          });
+        } catch (e) {
+          clearTimeout(timer);
+          if (!resolved) { resolved = true; console.error('Geocode error:', address, e); resolve(null); }
+        }
       });
     }
 
-    // Driving route
+    // Driving route with timeout
     async function getDrivingRoute(from, to) {
       return new Promise((resolve) => {
-        const driving = new AMap.Driving({ policy: AMap.DrivingPolicy.LEAST_TIME });
-        driving.search(
+        let resolved = false;
+        const timer = setTimeout(() => {
+          if (!resolved) { resolved = true; resolve({ distance: 0, duration: 0 }); }
+        }, 8000);
+        try {
+          const driving = new AMap.Driving({ policy: AMap.DrivingPolicy.LEAST_TIME });
+          driving.search(
           new AMap.LngLat(from.lng, from.lat),
           new AMap.LngLat(to.lng, to.lat),
           (status, result) => {
-            if (status === 'complete' && result.routes.length > 0) {
+            clearTimeout(timer);
+            if (resolved) return;
+            if (status === 'complete' && result && result.routes && result.routes.length > 0) {
+              resolved = true;
               const route = result.routes[0];
               resolve({ distance: route.distance, duration: route.time });
             } else {
-              // Fallback: straight line distance
+              resolved = true;
               const dist = AMap.GeometryUtil.distance([from.lng, from.lat], [to.lng, to.lat]);
-              resolve({ distance: dist, duration: dist / 40 * 3.6 }); // ~40km/h avg
+              resolve({ distance: dist, duration: dist / 40 * 3.6 });
             }
           }
         );
+        } catch (e) {
+          clearTimeout(timer);
+          if (!resolved) { resolved = true; resolve({ distance: 0, duration: 0 }); }
+        }
       });
     }
 
@@ -1243,11 +1288,26 @@ const app = createApp({
     async function generatePlan() {
       const suppliers = parsedSuppliers.value;
       if (!suppliers.length || !startDate.value || !endDate.value) return;
-      const plan = await planRoute(suppliers);
-      if (plan) {
-        currentPlan.value = plan;
-        showMap.value = true;
-        nextTick(() => renderMap());
+      loading.value = true;
+      loadingText.value = '正在初始化地图服务...';
+      try {
+        await ensureAMapReady();
+        if (!geocoder) {
+          showToast('⚠️ 地图服务加载失败，请刷新页面重试');
+          loading.value = false;
+          return;
+        }
+        const plan = await planRoute(suppliers);
+        if (plan) {
+          currentPlan.value = plan;
+          showMap.value = true;
+          nextTick(() => renderMap());
+        }
+      } catch (e) {
+        console.error('Generate plan error:', e);
+        showToast('⚠️ 规划失败: ' + e.message);
+      } finally {
+        loading.value = false;
       }
     }
 
