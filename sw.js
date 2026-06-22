@@ -1,4 +1,4 @@
-const CACHE_NAME = 'supplier-visit-v1';
+const CACHE_NAME = 'supplier-visit-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -18,6 +18,7 @@ self.addEventListener('activate', (event) => {
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     )
   );
+  // Force all clients to use the new service worker immediately
   self.clients.claim();
 });
 
