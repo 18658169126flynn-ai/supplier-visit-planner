@@ -583,7 +583,7 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
           <div class="day-stats">
             <span class="day-stat">📍 {{ day.suppliers.length }} 个供应商</span>
             <span class="day-stat">🚗 {{ day.totalDistance }}</span>
-            <span class="day-stat">🕐 上午 09:00-11:30 · 下午 14:00-17:30</span>
+            <span class="day-stat">🕐 上午 09:00-11:30 · 下午 13:30-18:00</span>
           </div>
         </div>
 
@@ -696,7 +696,7 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
       <div class="card-title">⚙️ 设置</div>
       <div class="setting-item">
         <span class="setting-label">拜访时间段</span>
-        <span class="setting-value">上午 09:00-11:30 · 下午 14:00-17:30</span>
+        <span class="setting-value">上午 09:00-11:30 · 下午 13:30-18:00</span>
       </div>
       <div class="setting-item">
         <span class="setting-label">每家拜访时长</span>
@@ -1213,10 +1213,10 @@ const app = createApp({
       let dayDist = 0;
       let prevIdx = null;
 
-      // Time windows: morning 09:00-11:30, afternoon 14:00-17:30
+      // Time windows: morning 09:00-11:30, afternoon 13:30-18:00
       const WINDOWS = [
         { start: 9 * 3600, end: 11.5 * 3600, label: '上午' },
-        { start: 14 * 3600, end: 17.5 * 3600, label: '下午' }
+        { start: 13.5 * 3600, end: 18 * 3600, label: '下午' }
       ];
       let windowIdx = 0; // 0=morning, 1=afternoon
       let currentTime = WINDOWS[0].start;
