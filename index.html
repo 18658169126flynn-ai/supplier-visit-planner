@@ -583,7 +583,7 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
           <div class="day-stats">
             <span class="day-stat">📍 {{ day.suppliers.length }} 个供应商</span>
             <span class="day-stat">🚗 {{ day.totalDistance }}</span>
-            <span class="day-stat">⏱️ {{ day.totalTime }}</span>
+            <span class="day-stat">🕐 上午 09:00-11:30 · 下午 14:00-17:30</span>
           </div>
         </div>
 
@@ -606,7 +606,10 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
                 <div class="supplier-name">{{ item.name }}</div>
                 <div class="supplier-address">{{ item.address }}</div>
                 <div class="supplier-contact" v-if="item.contact">👤 {{ item.contact }}</div>
-                <div style="font-size:12px;color:#FF9500;margin-top:4px">⏱️ {{ item.timeSlot || '待安排' }}（{{ item.visitMinutes || settings.visitMinutes }}分钟）</div>
+                <div style="font-size:12px;margin-top:4px">
+                  <span style="display:inline-block;padding:1px 6px;border-radius:4px;font-size:11px;font-weight:600;margin-right:4px" :style="{background: item.period === '上午' ? '#E8F5E9' : '#FFF3E0', color: item.period === '上午' ? '#2E7D32' : '#E65100'}">{{ item.period || '待定' }}</span>
+                  <span style="color:#FF9500">⏱️ {{ item.timeSlot || '待安排' }}（{{ item.visitMinutes || settings.visitMinutes }}分钟）</span>
+                </div>
               </div>
               <span class="supplier-status" :class="'status-' + item.status"
                 @click="cycleStatus(item)">
@@ -692,15 +695,8 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
     <div class="card">
       <div class="card-title">⚙️ 设置</div>
       <div class="setting-item">
-        <span class="setting-label">每天工作时长</span>
-        <span class="setting-value">{{ settings.workHours }}小时</span>
-      </div>
-      <div class="input-group" style="margin-top:8px">
-        <input type="range" min="4" max="12" v-model.number="settings.workHours" style="width:100%">
-      </div>
-      <div class="setting-item">
-        <span class="setting-label">出发时间</span>
-        <input type="text" v-model="settings.startTime" style="width:80px;text-align:center;padding:8px">
+        <span class="setting-label">拜访时间段</span>
+        <span class="setting-value">上午 09:00-11:30 · 下午 14:00-17:30</span>
       </div>
       <div class="setting-item">
         <span class="setting-label">每家拜访时长</span>
@@ -1209,10 +1205,6 @@ const app = createApp({
       // Assign to days
       const start = new Date(startDate.value);
       const end = new Date(endDate.value);
-      const totalDays = Math.max(1, Math.ceil((end - start) / 86400000) + 1);
-      const workSeconds = settings.workHours * 3600;
-      const [startH, startM] = settings.startTime.split(':').map(Number);
-      const startSeconds = startH * 3600 + startM * 60;
 
       const days = [];
       let dayIdx = 0;
@@ -1220,9 +1212,15 @@ const app = createApp({
       let daySuppliers = [];
       let dayDist = 0;
       let prevIdx = null;
-      let currentTime = startSeconds; // track time of day in seconds
 
-      // Schedule isolated on first day morning or last day
+      // Time windows: morning 09:00-11:30, afternoon 14:00-17:30
+      const WINDOWS = [
+        { start: 9 * 3600, end: 11.5 * 3600, label: '上午' },
+        { start: 14 * 3600, end: 17.5 * 3600, label: '下午' }
+      ];
+      let windowIdx = 0; // 0=morning, 1=afternoon
+      let currentTime = WINDOWS[0].start;
+
       const isolatedScheduled = new Set();
 
       function formatTimeOfDay(seconds) {
@@ -1231,10 +1229,10 @@ const app = createApp({
         return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
       }
 
-      function startNewDay() {
+      function pushDay() {
         if (daySuppliers.length > 0) {
           days.push({
-            date: new Date(start.getTime() + (dayIdx) * 86400000).toISOString().split('T')[0],
+            date: new Date(start.getTime() + dayIdx * 86400000).toISOString().split('T')[0],
             suppliers: daySuppliers,
             totalDistance: formatDist(dayDist),
             totalTime: formatTime(dayTime)
@@ -1245,94 +1243,70 @@ const app = createApp({
         dayDist = 0;
         daySuppliers = [];
         prevIdx = null;
-        currentTime = startSeconds;
+        windowIdx = 0;
+        currentTime = WINDOWS[0].start;
       }
 
-      // First day: add isolated suppliers first (morning run)
-      if (isolated.length > 0 && dayIdx === 0) {
-        for (const isoIdx of isolated) {
-          const s = located[isoIdx];
-          s._isolated = true;
-          const travelTime = prevIdx !== null ? timeMatrix[prevIdx][isoIdx] : 0;
-          const travelDist = prevIdx !== null ? distMatrix[prevIdx][isoIdx] : 0;
-          const visitTime = settings.visitMinutes * 60;
+      // Try to schedule a supplier. Returns true if scheduled.
+      function trySchedule(supplierIdx, isLocated) {
+        const visitSec = settings.visitMinutes * 60;
+        const travelTime = prevIdx !== null ? timeMatrix[prevIdx][supplierIdx] : 0;
+        const travelDist = prevIdx !== null ? distMatrix[prevIdx][supplierIdx] : 0;
 
-          if (dayTime + travelTime + visitTime > workSeconds && daySuppliers.length > 0) {
-            startNewDay();
+        // Try current and subsequent windows
+        while (windowIdx < WINDOWS.length) {
+          const win = WINDOWS[windowIdx];
+          const arrTime = (prevIdx !== null && windowIdx === 0 && daySuppliers.length > 0)
+            ? currentTime + travelTime : Math.max(currentTime, win.start) + (daySuppliers.length > 0 ? travelTime : 0);
+          const depTime = arrTime + visitSec;
+
+          if (depTime <= win.end) {
+            // Fits in this window
+            const s = isLocated ? located[supplierIdx] : supplierIdx; // supplierIdx is the supplier object for unlocated
+            const supplier = isLocated ? s : supplierIdx;
+            daySuppliers.push({
+              ...supplier,
+              routeDist: prevIdx !== null ? formatDist(travelDist) : '起点',
+              routeTime: prevIdx !== null ? formatTime(travelTime) : '',
+              timeSlot: formatTimeOfDay(arrTime) + ' - ' + formatTimeOfDay(depTime),
+              visitMinutes: settings.visitMinutes,
+              period: win.label
+            });
+            currentTime = depTime;
+            dayTime += travelTime + visitSec;
+            dayDist += travelDist;
+            prevIdx = supplierIdx;
+            return true;
           }
 
-          const arrTime = currentTime + travelTime;
-          const depTime = arrTime + visitTime;
+          // Doesn't fit, try next window
+          windowIdx++;
+        }
 
-          daySuppliers.push({
-            ...s,
-            routeDist: prevIdx !== null ? formatDist(travelDist) : '起点',
-            routeTime: prevIdx !== null ? formatTime(travelTime) : '',
-            timeSlot: formatTimeOfDay(arrTime) + ' - ' + formatTimeOfDay(depTime),
-            visitMinutes: settings.visitMinutes
-          });
-          currentTime = depTime;
-          dayTime += travelTime + visitTime;
-          dayDist += travelDist;
-          prevIdx = isoIdx;
+        // No window left today, start new day
+        pushDay();
+        return trySchedule(supplierIdx, isLocated); // retry on new day
+      }
+
+      // Schedule isolated suppliers first
+      if (isolated.length > 0) {
+        for (const isoIdx of isolated) {
+          trySchedule(isoIdx, true);
+          located[isoIdx]._isolated = true;
           isolatedScheduled.add(isoIdx);
         }
-        startNewDay();
+        pushDay();
       }
 
       // Schedule non-isolated
       for (const idx of ordered) {
-        const travelTime = prevIdx !== null ? timeMatrix[prevIdx][idx] : 0;
-        const travelDist = prevIdx !== null ? distMatrix[prevIdx][idx] : 0;
-        const visitTime = settings.visitMinutes * 60;
-
-        if (dayTime + travelTime + visitTime > workSeconds && daySuppliers.length > 0) {
-          startNewDay();
-        }
-
-        const arrTime = currentTime + travelTime;
-        const depTime = arrTime + visitTime;
-
-        daySuppliers.push({
-          ...located[idx],
-          routeDist: prevIdx !== null ? formatDist(travelDist) : '起点',
-          routeTime: prevIdx !== null ? formatTime(travelTime) : '',
-          timeSlot: formatTimeOfDay(arrTime) + ' - ' + formatTimeOfDay(depTime),
-          visitMinutes: settings.visitMinutes
-        });
-        currentTime = depTime;
-        dayTime += travelTime + visitTime;
-        dayDist += travelDist;
-        prevIdx = idx;
+        trySchedule(idx, true);
       }
 
       // Remaining isolated not yet scheduled
       for (const isoIdx of isolated) {
         if (!isolatedScheduled.has(isoIdx)) {
-          const s = located[isoIdx];
-          s._isolated = true;
-          const travelTime = prevIdx !== null ? timeMatrix[prevIdx][isoIdx] : 0;
-          const travelDist = prevIdx !== null ? distMatrix[prevIdx][isoIdx] : 0;
-          const visitTime = settings.visitMinutes * 60;
-
-          if (dayTime + travelTime + visitTime > workSeconds && daySuppliers.length > 0) {
-            startNewDay();
-          }
-
-          const arrTime = currentTime + travelTime;
-          const depTime = arrTime + visitTime;
-
-          daySuppliers.push({
-            ...s,
-            routeDist: prevIdx !== null ? formatDist(travelDist) : '起点',
-            routeTime: prevIdx !== null ? formatTime(travelTime) : '',
-            timeSlot: formatTimeOfDay(arrTime) + ' - ' + formatTimeOfDay(depTime),
-            visitMinutes: settings.visitMinutes
-          });
-          currentTime = depTime;
-          dayTime += travelTime + visitTime;
-          dayDist += travelDist;
-          prevIdx = isoIdx;
+          trySchedule(isoIdx, true);
         }
       }
 
