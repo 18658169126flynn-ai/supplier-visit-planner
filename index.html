@@ -551,8 +551,16 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
         <div class="card-title">📅 出差时间段</div>
         <div class="date-range">
           <input type="date" v-model="startDate">
+          <select v-model="startPeriod" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-size:14px">
+            <option value="morning">上午</option>
+            <option value="afternoon">下午</option>
+          </select>
           <span>~</span>
           <input type="date" v-model="endDate">
+          <select v-model="endPeriod" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-size:14px">
+            <option value="morning">上午</option>
+            <option value="afternoon">下午</option>
+          </select>
         </div>
       </div>
       <div style="padding: 0 16px 20px;">
@@ -891,6 +899,8 @@ const app = createApp({
     const rawText = ref('');
     const startDate = ref('');
     const endDate = ref('');
+    const startPeriod = ref('morning');
+    const endPeriod = ref('afternoon');
     const currentPlan = ref(null);
     const history = ref([]);
     const showMap = ref(false);
@@ -1124,6 +1134,8 @@ const app = createApp({
           name: '拜访计划 ' + formatDate(start.toISOString()),
           startDate: startDate.value,
           endDate: endDate.value,
+          startPeriod: startPeriod.value,
+          endPeriod: endPeriod.value,
           days: [{
             date: start.toISOString().split('T')[0],
             suppliers: fallbackSuppliers,
@@ -1205,6 +1217,7 @@ const app = createApp({
       // Assign to days
       const start = new Date(startDate.value);
       const end = new Date(endDate.value);
+      const totalDays = Math.max(1, Math.ceil((end - start) / 86400000) + 1);
 
       const days = [];
       let dayIdx = 0;
@@ -1214,12 +1227,23 @@ const app = createApp({
       let prevIdx = null;
 
       // Time windows: morning 09:00-11:30, afternoon 13:30-18:00
-      const WINDOWS = [
+      const ALL_WINDOWS = [
         { start: 9 * 3600, end: 11.5 * 3600, label: '上午' },
         { start: 13.5 * 3600, end: 18 * 3600, label: '下午' }
       ];
-      let windowIdx = 0; // 0=morning, 1=afternoon
-      let currentTime = WINDOWS[0].start;
+
+      function getWindowsForDay(di) {
+        let wins = [...ALL_WINDOWS];
+        // First day: skip morning if startPeriod is 'afternoon'
+        if (di === 0 && startPeriod.value === 'afternoon') wins = wins.filter(w => w.label === '下午');
+        // Last day: skip afternoon if endPeriod is 'morning'
+        if (di === totalDays - 1 && endPeriod.value === 'morning') wins = wins.filter(w => w.label === '上午');
+        return wins;
+      }
+
+      let availableWindows = getWindowsForDay(0);
+      let windowIdx = 0;
+      let currentTime = availableWindows.length > 0 ? availableWindows[0].start : ALL_WINDOWS[0].start;
 
       const isolatedScheduled = new Set();
 
@@ -1243,8 +1267,9 @@ const app = createApp({
         dayDist = 0;
         daySuppliers = [];
         prevIdx = null;
+        availableWindows = getWindowsForDay(dayIdx);
         windowIdx = 0;
-        currentTime = WINDOWS[0].start;
+        currentTime = availableWindows.length > 0 ? availableWindows[0].start : ALL_WINDOWS[0].start;
       }
 
       // Try to schedule a supplier. Returns true if scheduled.
@@ -1254,8 +1279,8 @@ const app = createApp({
         const travelDist = prevIdx !== null ? distMatrix[prevIdx][supplierIdx] : 0;
 
         // Try current and subsequent windows
-        while (windowIdx < WINDOWS.length) {
-          const win = WINDOWS[windowIdx];
+        while (windowIdx < availableWindows.length) {
+          const win = availableWindows[windowIdx];
           const arrTime = (prevIdx !== null && windowIdx === 0 && daySuppliers.length > 0)
             ? currentTime + travelTime : Math.max(currentTime, win.start) + (daySuppliers.length > 0 ? travelTime : 0);
           const depTime = arrTime + visitSec;
@@ -1347,6 +1372,8 @@ const app = createApp({
         name: '拜访计划 ' + formatDate(start.toISOString()),
         startDate: startDate.value,
         endDate: endDate.value,
+        startPeriod: startPeriod.value,
+        endPeriod: endPeriod.value,
         days,
         totalSuppliers: valid.length,
         totalDays: days.length,
@@ -1730,7 +1757,7 @@ const app = createApp({
 
     return {
       currentView, loading, loadingText, toast, toastKey,
-      rawText, startDate, endDate, currentPlan, history,
+      rawText, startDate, endDate, startPeriod, endPeriod, currentPlan, history,
       showMap, showFullMap, addSupplierModal, editSupplierModal, moveDayModal,
       supplierForm, moveInfo, settings, statusText,
       parsedSuppliers, canGenerate, headerSub,
