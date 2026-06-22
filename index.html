@@ -613,6 +613,7 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
               </span>
             </div>
             <div class="supplier-actions">
+              <button class="btn btn-primary btn-small" @click="navigateTo(item)">🧭 导航</button>
               <button class="btn btn-outline btn-small" @click="editSupplier(item)">✏️ 编辑</button>
               <button class="btn btn-outline btn-small" @click="moveToOtherDay(di, si)">📅 移到其他天</button>
               <button class="btn btn-outline btn-small" @click="removeSupplier(di, si)" style="color:var(--danger);border-color:var(--danger)">🗑️ 删除</button>
@@ -699,6 +700,13 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
       <div class="setting-item">
         <span class="setting-label">出发时间</span>
         <input type="text" v-model="settings.startTime" style="width:80px;text-align:center;padding:8px">
+      </div>
+      <div class="setting-item">
+        <span class="setting-label">每家拜访时长</span>
+        <span class="setting-value">{{ settings.visitMinutes }}分钟</span>
+      </div>
+      <div class="input-group" style="margin-top:8px">
+        <input type="range" min="30" max="240" step="30" v-model.number="settings.visitMinutes" style="width:100%">
       </div>
       <div class="setting-item">
         <span class="setting-label">独立区域距离阈值</span>
@@ -903,6 +911,7 @@ const app = createApp({
     const settings = reactive({
       workHours: 8,
       startTime: '09:00',
+      visitMinutes: 120,
       isolatedThreshold: 30
     });
 
@@ -964,6 +973,22 @@ const app = createApp({
           if (left.length >= 2 && right.length >= 4) {
             name = left;
             address = right;
+          }
+        }
+
+        // Format: name address contact (space separator)
+        if (!name) {
+          const parts = line.split(/\s+/);
+          if (parts.length >= 2) {
+            name = parts[0];
+            // Last part might be phone
+            const lastPart = parts[parts.length - 1];
+            if (/^1[3-9]\d{9}$/.test(lastPart)) {
+              contact = lastPart;
+              address = parts.slice(1, -1).join(' ');
+            } else {
+              address = parts.slice(1).join(' ');
+            }
           }
         }
 
@@ -1071,11 +1096,11 @@ const app = createApp({
         console.log('[PlanRoute] Result:', geo ? 'OK' : 'FAILED', suppliers[i].address);
         geoResults.push(geo);
         if (!geo) {
-          showToast(`⚠️ 无法解析: ${suppliers[i].address}`);
+          showToast(`⚠️ 地址未精确定位: ${suppliers[i].address}（将按输入顺序排列）`);
         }
       }
 
-      // Filter valid
+      // Keep all suppliers - geocoding is optional for sorting
       const valid = suppliers.map((s, i) => ({
         ...s,
         id: 's_' + Date.now() + '_' + i,
@@ -1084,27 +1109,49 @@ const app = createApp({
         showRecord: false,
         recording: false,
         record: { notes: '', media: [] }
-      })).filter(s => s.location);
+      }));
 
-      if (valid.length === 0) {
-        showToast('没有有效的地址，请检查输入');
+      const located = valid.filter(s => s.location);
+      const unlocated = valid.filter(s => !s.location);
+
+      if (located.length === 0) {
+        // All failed geocoding - show suppliers in input order, no route info
         loading.value = false;
-        return null;
+        const fallbackSuppliers = valid.map(s => ({
+          ...s,
+          routeDist: '未知',
+          routeTime: ''
+        }));
+        return {
+          id: 'plan_' + Date.now(),
+          name: '拜访计划 ' + formatDate(start.toISOString()),
+          startDate: startDate.value,
+          endDate: endDate.value,
+          days: [{
+            date: start.toISOString().split('T')[0],
+            suppliers: fallbackSuppliers,
+            totalDistance: '未知',
+            totalTime: '未知'
+          }],
+          totalSuppliers: valid.length,
+          totalDays: 1,
+          createdAt: new Date().toISOString()
+        };
       }
 
       loadingText.value = '计算路线距离...';
-      console.log('[PlanRoute] Building distance matrix for', valid.length, 'valid suppliers');
+      console.log('[PlanRoute] Building distance matrix for', located.length, 'located suppliers');
 
-      // Build distance matrix using Web Service API
-      const n = valid.length;
+      // Build distance matrix for located suppliers only
+      const n = located.length;
       const distMatrix = Array(n).fill(null).map(() => Array(n).fill(Infinity));
       const timeMatrix = Array(n).fill(null).map(() => Array(n).fill(Infinity));
 
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
           loadingText.value = `计算路线 ${i + 1}-${j + 1}/${n}...`;
-          console.log('[PlanRoute] Driving route:', valid[i].name, '->', valid[j].name);
-          const route = await getDrivingRoute(valid[i].location, valid[j].location);
+          console.log('[PlanRoute] Driving route:', located[i].name, '->', located[j].name);
+          const route = await getDrivingRoute(located[i].location, located[j].location);
           console.log('[PlanRoute] Route result:', Math.round(route.distance) + 'm', Math.round(route.duration/60) + 'min');
           distMatrix[i][j] = route.distance;
           distMatrix[j][i] = route.distance;
@@ -1195,11 +1242,11 @@ const app = createApp({
       // First day: add isolated suppliers first (morning run)
       if (isolated.length > 0 && dayIdx === 0) {
         for (const isoIdx of isolated) {
-          const s = valid[isoIdx];
+          const s = located[isoIdx];
           s._isolated = true;
           const travelTime = prevIdx !== null ? timeMatrix[prevIdx][isoIdx] : 0;
           const travelDist = prevIdx !== null ? distMatrix[prevIdx][isoIdx] : 0;
-          const visitTime = 30 * 60; // 30 min visit
+          const visitTime = settings.visitMinutes * 60;
 
           if (dayTime + travelTime + visitTime > workSeconds && daySuppliers.length > 0) {
             startNewDay();
@@ -1222,14 +1269,14 @@ const app = createApp({
       for (const idx of ordered) {
         const travelTime = prevIdx !== null ? timeMatrix[prevIdx][idx] : 0;
         const travelDist = prevIdx !== null ? distMatrix[prevIdx][idx] : 0;
-        const visitTime = 30 * 60;
+        const visitTime = settings.visitMinutes * 60;
 
         if (dayTime + travelTime + visitTime > workSeconds && daySuppliers.length > 0) {
           startNewDay();
         }
 
         daySuppliers.push({
-          ...valid[idx],
+          ...located[idx],
           routeDist: prevIdx !== null ? formatDist(travelDist) : '起点',
           routeTime: prevIdx !== null ? formatTime(travelTime) : ''
         });
@@ -1241,11 +1288,11 @@ const app = createApp({
       // Remaining isolated not yet scheduled
       for (const isoIdx of isolated) {
         if (!isolatedScheduled.has(isoIdx)) {
-          const s = valid[isoIdx];
+          const s = located[isoIdx];
           s._isolated = true;
           const travelTime = prevIdx !== null ? timeMatrix[prevIdx][isoIdx] : 0;
           const travelDist = prevIdx !== null ? distMatrix[prevIdx][isoIdx] : 0;
-          const visitTime = 30 * 60;
+          const visitTime = settings.visitMinutes * 60;
 
           if (dayTime + travelTime + visitTime > workSeconds && daySuppliers.length > 0) {
             startNewDay();
@@ -1270,6 +1317,25 @@ const app = createApp({
           totalDistance: formatDist(dayDist),
           totalTime: formatTime(dayTime)
         });
+      }
+
+      // Append unlocated suppliers to last day (or create new day)
+      if (unlocated.length > 0) {
+        const unlocatedMapped = unlocated.map(s => ({
+          ...s,
+          routeDist: '未知',
+          routeTime: ''
+        }));
+        if (days.length > 0) {
+          days[days.length - 1].suppliers.push(...unlocatedMapped);
+        } else {
+          days.push({
+            date: start.toISOString().split('T')[0],
+            suppliers: unlocatedMapped,
+            totalDistance: '未知',
+            totalTime: '未知'
+          });
+        }
       }
 
       loading.value = false;
@@ -1387,6 +1453,20 @@ const app = createApp({
       const states = ['pending', 'visited', 'skipped'];
       const idx = states.indexOf(item.status);
       item.status = states[(idx + 1) % 3];
+    }
+
+    function navigateTo(item) {
+      // Use address directly for AMap navigation
+      const addr = encodeURIComponent(item.address || item.name);
+      // Try AMap app scheme first, fallback to web
+      const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+      if (isMobile) {
+        // AMap app deep link
+        window.location.href = `amapuri://route/plan/?dlat=0&dlon=0&dname=${addr}&dev=0&t=0`;
+      } else {
+        // AMap web
+        window.open(`https://uri.amap.com/search?keyword=${addr}`, '_blank');
+      }
     }
 
     function editSupplier(item) {
@@ -1656,6 +1736,7 @@ const app = createApp({
       switchView, formatDate, showToast,
       onDragStart, onDrop, onTouchStart, onTouchMove, onTouchEnd,
       cycleStatus, editSupplier, removeSupplier, moveToOtherDay, confirmMoveDay,
+      navigateTo,
       confirmSupplier, closeModal,
       onFileUpload, toggleRecording, removeMedia,
       loadHistory
